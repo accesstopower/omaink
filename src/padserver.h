@@ -36,7 +36,7 @@ public:
     // This machine's IPv4 addresses, home and office networks first.
     static QStringList addresses();
     static QString url(const QString &address, quint16 port, const QString &token);
-    // The home or office network this machine is on, like 192.168.20.0/24.
+    // The home or office network this machine is on, like 192.168.1.0/24.
     static QString localSubnet();
     // When ufw is on and nothing lets the port in, the command that does,
     // limited to the local network. Empty when the port is reachable.
