@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=OmaInk
+Comment=Draw over your screen from a mouse, pen tablet or iPad
+Comment[es]=Dibuja sobre tu pantalla con el ratón, una tableta o un iPad
+Exec=omaink toggle
+Icon=omaink
+Terminal=false
+Categories=Utility;Education;Graphics;
+Keywords=annotate;draw;ink;screen;presentation;teach;
+StartupWMClass=omaink

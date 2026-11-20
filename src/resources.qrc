@@ -1,0 +1,13 @@
+<RCC>
+    <qresource prefix="/">
+        <file alias="Main.qml">Main.qml</file>
+        <file alias="InkToolbar.qml">InkToolbar.qml</file>
+        <file alias="HelpCard.qml">HelpCard.qml</file>
+        <file alias="web/pad.html">web/pad.html</file>
+        <file alias="web/pad.css">web/pad.css</file>
+        <file alias="web/pad.js">web/pad.js</file>
+        <file alias="web/icon.svg">web/icon.svg</file>
+        <file alias="i18n/en.json">i18n/en.json</file>
+        <file alias="i18n/es.json">i18n/es.json</file>
+    </qresource>
+</RCC>
