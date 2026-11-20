@@ -36,6 +36,13 @@ public:
     // This machine's IPv4 addresses, home and office networks first.
     static QStringList addresses();
     static QString url(const QString &address, quint16 port, const QString &token);
+    // The home or office network this machine is on, like 192.168.20.0/24.
+    static QString localSubnet();
+    // When ufw is on and nothing lets the port in, the command that does,
+    // limited to the local network. Empty when the port is reachable.
+    static QString firewallFix(quint16 port, const QString &confPath = "/etc/ufw/ufw.conf",
+                               const QString &rulesPath = "/etc/ufw/user.rules",
+                               const QString &subnet = localSubnet());
 
     int clientCount() const;
 

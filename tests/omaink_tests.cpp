@@ -271,6 +271,26 @@ private slots:
         QVERIFY(PadServer::loadToken(path, true) != first);
     }
 
+    void firewallFixNamesTheBlockedPort()
+    {
+        QTemporaryDir dir;
+        const QString conf = dir.filePath("ufw.conf"), rules = dir.filePath("user.rules");
+        write(conf, "ENABLED=yes\n");
+        write(rules, "### tuple ### allow tcp 53317 0.0.0.0/0 any 0.0.0.0/0 in\n"
+                     "### tuple ### limit tcp 22 0.0.0.0/0 any 0.0.0.0/0 in\n");
+        QCOMPARE(PadServer::firewallFix(7777, conf, rules, "192.168.20.0/24"),
+                 QString("sudo ufw allow from 192.168.20.0/24 to any port 7777 proto tcp comment omaink"));
+
+        write(rules, "### tuple ### allow tcp 7000:8000 192.168.20.0/24 any 0.0.0.0/0 in\n");
+        QVERIFY(PadServer::firewallFix(7777, conf, rules, "192.168.20.0/24").isEmpty());
+        write(rules, "### tuple ### allow any 7777 0.0.0.0/0 any 0.0.0.0/0 in\n");
+        QVERIFY(PadServer::firewallFix(7777, conf, rules, "").isEmpty());
+
+        write(conf, "ENABLED=no\n");
+        write(rules, "");
+        QVERIFY(PadServer::firewallFix(7777, conf, rules, "").isEmpty());
+    }
+
     void serverServesThePadAndGuardsTheSocket()
     {
         InkModel model;

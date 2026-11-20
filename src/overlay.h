@@ -31,6 +31,7 @@ class Overlay : public QObject {
     Q_PROPERTY(QStringList padUrls READ padUrls NOTIFY padChanged)
     Q_PROPERTY(QString padError READ padError NOTIFY padChanged)
     Q_PROPERTY(int padClients READ padClients NOTIFY padChanged)
+    Q_PROPERTY(QString firewallFix READ firewallFix NOTIFY padChanged)
     Q_PROPERTY(QString qrSource READ qrSource NOTIFY padChanged)
     Q_PROPERTY(QString output READ output NOTIFY outputChanged)
     Q_PROPERTY(QStringList palette READ palette CONSTANT)
@@ -65,6 +66,7 @@ public:
     QStringList padUrls() const;
     QString padError() const { return m_padError; }
     int padClients() const;
+    QString firewallFix() const;
     QString qrSource() const { return m_qrSource; }
     QString output() const { return m_output; }
     QStringList palette() const { return paletteColors; }

@@ -118,6 +118,9 @@ int report(const Options &options, const QJsonObject &reply) {
         }
         for (const auto &url : urls)
             print(url.toString());
+        const QString fix = pad.value("firewall").toString();
+        if (!fix.isEmpty())
+            print("\nThe firewall blocks tablets from reaching OmaInk. Let them in with:\n  " + fix, stderr);
         return urls.isEmpty() ? 1 : 0;
     }
     if (options.command == "status") {
@@ -229,7 +232,8 @@ int main(int argc, char *argv[]) {
             QJsonArray urls;
             for (const auto &address : PadServer::addresses())
                 urls.append(PadServer::url(address, options.port, key));
-            return report(options, {{"ok", true}, {"running", false}, {"pad", QJsonObject{{"urls", urls}}}});
+            return report(options, {{"ok", true}, {"running", false},
+                                    {"pad", QJsonObject{{"urls", urls}, {"firewall", PadServer::firewallFix(options.port)}}}});
         }
     }
 

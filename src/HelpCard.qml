@@ -115,6 +115,35 @@ Rectangle {
                 font.family: "monospace"
                 font.pixelSize: 12
             }
+            Rectangle {
+                visible: overlay.padUrls.length > 0 && overlay.firewallFix !== ""
+                Layout.fillWidth: true
+                implicitHeight: firewallColumn.implicitHeight + 16
+                radius: Math.min(4, theme.radius)
+                color: "#3a2a12"
+                border.color: "#ff9f0a"
+                ColumnLayout {
+                    id: firewallColumn
+                    anchors.fill: parent
+                    anchors.margins: 8
+                    spacing: 4
+                    Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        color: "#ffd9a0"
+                        font.pixelSize: 13
+                        text: qsTr("The firewall blocks tablets, so the page stays blank. Let them in from a terminal:")
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WrapAnywhere
+                        color: "#f2f2f2"
+                        font.family: "monospace"
+                        font.pixelSize: 12
+                        text: overlay.firewallFix
+                    }
+                }
+            }
             Label {
                 visible: overlay.padUrls.length > 0
                 color: overlay.padClients > 0 ? theme.accent : "#9a9a9a"

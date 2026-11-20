@@ -2,6 +2,7 @@
   "%n tablets connected": { "one": "%n tableta conectada", "many": "%n tabletas conectadas", "other": "%n tabletas conectadas" },
   "Tablet connected": "Tableta conectada",
   "Tablet disconnected": "Tableta desconectada",
+  "The firewall blocks tablets, so the page stays blank. Let them in from a terminal:": "El cortafuegos bloquea las tabletas y la página queda en blanco. Déjalas entrar desde una terminal:",
   "Drawing. Esc to finish, ? for help": "Dibujando. Esc para terminar, ? para ayuda",
   "Quit OmaInk?": "¿Salir de OmaInk?",
   "The ink on screen will be cleared.": "Se borrará la tinta de la pantalla.",

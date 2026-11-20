@@ -188,6 +188,11 @@ QStringList Overlay::padUrls() const {
 
 int Overlay::padClients() const { return m_pad ? m_pad->clientCount() : 0; }
 
+QString Overlay::firewallFix() const {
+    // Checked on every ask, so the warning goes away once the rule is added.
+    return m_pad && m_pad->isListening() ? PadServer::firewallFix(m_pad->port()) : QString();
+}
+
 void Overlay::makeQrCode() {
     const QString qrencode = QStandardPaths::findExecutable("qrencode");
     const QStringList urls = padUrls();
@@ -347,5 +352,6 @@ QJsonObject Overlay::run(const QString &command, const QStringList &arguments) {
             {"output", m_output},
             {"pad", QJsonObject{{"urls", QJsonArray::fromStringList(padUrls())},
                                 {"clients", padClients()},
+                                {"firewall", firewallFix()},
                                 {"error", m_padError}}}};
 }

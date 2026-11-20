@@ -152,6 +152,48 @@ QStringList PadServer::addresses() {
     return preferred + others;
 }
 
+QString PadServer::localSubnet() {
+    for (const auto &interface : QNetworkInterface::allInterfaces()) {
+        const auto flags = interface.flags();
+        if (!(flags & QNetworkInterface::IsUp) || (flags & QNetworkInterface::IsLoopBack))
+            continue;
+        for (const auto &entry : interface.addressEntries()) {
+            if (entry.ip().protocol() != QAbstractSocket::IPv4Protocol || !isPrivate(entry.ip()))
+                continue;
+            const int prefix = entry.prefixLength() > 0 ? entry.prefixLength() : 24;
+            const quint32 mask = prefix >= 32 ? 0xFFFFFFFFu : ~(0xFFFFFFFFu >> prefix);
+            return QString("%1/%2").arg(QHostAddress(entry.ip().toIPv4Address() & mask).toString()).arg(prefix);
+        }
+    }
+    return {};
+}
+
+QString PadServer::firewallFix(quint16 port, const QString &confPath, const QString &rulesPath,
+                               const QString &subnet) {
+    // Omarchy turns ufw on, and it drops a tablet's connection without a
+    // reply, which Safari shows as a blank page. Both files are readable
+    // without root, so the problem can be named before anyone is stuck.
+    QFile conf(confPath);
+    if (!conf.open(QIODevice::ReadOnly) ||
+        !QString::fromUtf8(conf.readAll()).contains(QRegularExpression("^\\s*ENABLED\\s*=\\s*yes", QRegularExpression::MultilineOption)))
+        return {};
+    QFile rules(rulesPath);
+    if (!rules.open(QIODevice::ReadOnly))
+        return {};
+    static const QRegularExpression tuple("^### tuple ### (allow|limit) (tcp|any) (\\S+) ", QRegularExpression::MultilineOption);
+    for (auto it = tuple.globalMatch(QString::fromUtf8(rules.readAll())); it.hasNext();) {
+        const QString ports = it.next().captured(3);
+        for (const auto &part : ports.split(',')) {
+            const auto range = part.split(':');
+            const uint low = range.first().toUInt(), high = range.last().toUInt();
+            if (part == "any" || (low <= port && port <= high))
+                return {};
+        }
+    }
+    return subnet.isEmpty() ? QString("sudo ufw allow %1/tcp comment omaink").arg(port)
+                            : QString("sudo ufw allow from %1 to any port %2 proto tcp comment omaink").arg(subnet).arg(port);
+}
+
 QString PadServer::url(const QString &address, quint16 port, const QString &token) {
     return QString("http://%1:%2/pad?k=%3").arg(address).arg(port).arg(token);
 }
