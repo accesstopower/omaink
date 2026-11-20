@@ -5,7 +5,7 @@ a pen tablet, or an iPad's Apple Pencil. The ink floats above every app, so any
 screen recorder, OBS, Zoom or Meet picks it up. When you aren't drawing, clicks
 go straight through to the apps underneath.
 
-![OmaInk drawing on a whiteboard](docs/screenshot.png)
+![OmaInk notes drawn over a coding lesson on the Omarchy desktop](docs/screenshot.png)
 
 - **Pen** with pressure, a **calligraphy nib** whose strokes are thin along
   the nib and full width across it, a **marker**, a **highlighter**, and a
