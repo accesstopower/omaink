@@ -61,8 +61,9 @@ you clear it.
 ### Drawing from an iPad
 
 1. Put the iPad on the same Wi-Fi as the computer.
-2. Press `?` while drawing, or run `omaink pad`, and open the address it shows
-   in Safari. You can also scan the QR code.
+2. Run `omaink pad` in a terminal and scan the QR code it prints with the
+   iPad's camera, or open the address in Safari. While drawing, `?` shows
+   the same QR code on screen.
 3. Tap **Share → Add to Home Screen** to give the pad its own icon.
 
 The address includes a pairing key, so other people on the network can't see

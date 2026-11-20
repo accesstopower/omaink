@@ -11,6 +11,7 @@
 #include <QJsonObject>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QProcess>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -105,9 +106,19 @@ int report(const Options &options, const QJsonObject &reply) {
         const auto pad = reply.value("pad").toObject();
         if (!pad.value("error").toString().isEmpty())
             print("omaink: " + pad.value("error").toString(), stderr);
-        for (const auto &url : pad.value("urls").toArray())
+        const auto urls = pad.value("urls").toArray();
+        // In a terminal, the QR code comes first, so the tablet can scan
+        // it straight off the screen.
+        const QString qrencode = QStandardPaths::findExecutable("qrencode");
+        if (!urls.isEmpty() && !qrencode.isEmpty() && isatty(STDOUT_FILENO)) {
+            QProcess qr;
+            qr.start(qrencode, {"-t", "ANSIUTF8", "-m", "2", urls.first().toString()});
+            if (qr.waitForFinished(3000) && qr.exitCode() == 0)
+                std::fputs(qr.readAllStandardOutput().constData(), stdout);
+        }
+        for (const auto &url : urls)
             print(url.toString());
-        return pad.value("urls").toArray().isEmpty() ? 1 : 0;
+        return urls.isEmpty() ? 1 : 0;
     }
     if (options.command == "status") {
         if (!reply.value("running").toBool(true)) {
