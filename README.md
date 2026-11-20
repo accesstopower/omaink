@@ -28,7 +28,14 @@ This builds the package and installs it with `makepkg`. OmaInk then shows up in
 the app launcher (`Super + Space`). It needs `layer-shell-qt` and `grim`, which
 the package pulls in, plus `qrencode` if you want the pairing QR code.
 
-To toggle drawing with a key, add a line to `~/.config/hypr/bindings.conf`:
+To toggle drawing with a key, add a line to `~/.config/hypr/bindings.lua`:
+
+```lua
+o.bind("SUPER + ALT + D", "Draw on screen", "omaink toggle")
+```
+
+On an older Omarchy that still has `~/.config/hypr/bindings.conf`, add this
+instead:
 
 ```ini
 bindd = SUPER ALT, D, Draw on screen, exec, omaink toggle
