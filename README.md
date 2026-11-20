@@ -107,7 +107,7 @@ tablet port, and `--no-pad` turns the tablet pad off.
   a tablet of any size.
 - The tablet pad is a small web page that the app serves itself over HTTP and
   a WebSocket on port 7777. The screen mirror is `grim` capturing the
-  overlay's screen about eight times a second.
+  overlay's screen about five times a second.
 - `src/inkrenderer.cpp` draws the ink on the computer and `src/web/pad.js`
   draws it on the tablet, using the same math. Change them together.
 
