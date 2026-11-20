@@ -18,6 +18,7 @@
 #include <QStandardPaths>
 #include <QSvgRenderer>
 #include <QTcpSocket>
+#include <QtEndian>
 #include <QUrlQuery>
 #include <algorithm>
 
@@ -62,8 +63,11 @@ PadServer::PadServer(InkModel *model, QObject *parent)
     : QObject(parent), m_model(model), m_grimPath(QStandardPaths::findExecutable("grim")) {
     connect(&m_server, &QTcpServer::newConnection, this, &PadServer::onConnection);
 
+    connect(m_model, &InkModel::changed, this, [this] { ++m_inkVersion; });
     connect(m_model, &InkModel::committed, this, [this](const StrokePtr &stroke) {
-        broadcast({{"t", "add"}, {"stroke", stroke->toJson()}});
+        // Frames captured from here on show this stroke.
+        ++m_inkVersion;
+        broadcast({{"t", "add"}, {"stroke", stroke->toJson()}, {"v", qint64(m_inkVersion)}});
     });
     connect(m_model, &InkModel::removed, this, [this](const QStringList &ids) {
         broadcast({{"t", "remove"}, {"ids", QJsonArray::fromStringList(ids)}});
@@ -471,6 +475,7 @@ void PadServer::capture() {
         arguments << "-o" << m_output;
     arguments << "-";
     m_captureClock.start();
+    m_captureVersion = m_inkVersion;
     m_grim.start(m_grimPath, arguments);
 }
 
@@ -482,7 +487,10 @@ void PadServer::captureFinished(int code, QProcess::ExitStatus status) {
             m_mirrorError.clear();
             broadcast({{"t", "mirror-error"}, {"message", ""}});
         }
-        const QByteArray frame = WebSocket::encode(WebSocket::Binary, jpeg);
+        // Four bytes of ink version, big-endian, then the JPEG.
+        QByteArray payload(4, Qt::Uninitialized);
+        qToBigEndian(m_captureVersion, payload.data());
+        const QByteArray frame = WebSocket::encode(WebSocket::Binary, payload + jpeg);
         for (auto *client : std::as_const(m_clients))
             if (client->upgraded && client->mirror && client->socket->bytesToWrite() < maxBacklog)
                 client->socket->write(frame);

@@ -343,6 +343,7 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT((received += socket.readAll()).contains("\"t\":\"state\""), 2000);
         QVERIFY(received.startsWith("HTTP/1.1 101"));
         QVERIFY(received.contains("s3pPLMBiTxaQ9kYGzzhZRbK+xOo="));
+        received.clear();
         QCOMPARE(server.clientCount(), 1);
 
         auto send = [&](const QJsonObject &message) {
@@ -356,6 +357,8 @@ private slots:
         QCOMPARE(model.strokes().first()->id, QString("c1:1"));
         QCOMPARE(model.strokes().first()->pts.size(), 3);
         QTRY_VERIFY_WITH_TIMEOUT((received += socket.readAll()).contains("\"t\":\"add\""), 2000);
+        // The add carries the ink version frames must reach to show it.
+        QVERIFY(QRegularExpression("\"v\":[1-9]").match(QString::fromUtf8(received)).hasMatch());
 
         send({{"t", "undo"}});
         QTRY_VERIFY_WITH_TIMEOUT(model.isEmpty(), 2000);
@@ -392,7 +395,8 @@ private slots:
                      "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n");
         socket.write(clientFrame(WebSocket::Text, R"({"t":"mirror","on":true})"));
         QByteArray received;
-        QTRY_VERIFY_WITH_TIMEOUT((received += socket.readAll()).contains(QByteArray("\x82\x08JPEGDATA")), 3000);
+        QTRY_VERIFY_WITH_TIMEOUT((received += socket.readAll()).contains(QByteArray("\x82\x0c", 2)), 3000);
+        QVERIFY(received.contains("JPEGDATA"));
     }
 
     void themeFallsBack()

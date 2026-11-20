@@ -274,6 +274,11 @@ const touches = new Map();
 let gesture = null;
 let inkDirty = true;
 let lastFrameUrl = null;
+// While a shape is being drawn the mirror holds still: the computer's copy
+// lags behind the Pencil, and a shape redrawn at every move would show as a
+// second, smaller shape. Frames older than the finished shape stay hidden.
+let holdMirrorBelow = 0;
+let holdSince = 0;
 
 // --- toolbar ---------------------------------------------------------------
 
@@ -365,7 +370,7 @@ function connect() {
     return;
   }
   socket = new WebSocket(`ws://${location.host}/ws?k=${encodeURIComponent(key)}`);
-  socket.binaryType = 'blob';
+  socket.binaryType = 'arraybuffer';
   socket.onopen = () => {
     retryDelay = 500;
     $('status').classList.add('live');
@@ -404,6 +409,7 @@ function receive(m) {
       break;
     case 'add':
       committed.push(m.stroke);
+      if (awaiting.has(m.stroke.id) && SHAPES.includes(m.stroke.tool) && m.v) holdMirrorBelow = m.v;
       awaiting.delete(m.stroke.id);
       inkDirty = true;
       break;
@@ -431,9 +437,14 @@ function receive(m) {
   }
 }
 
-function showFrame(blob) {
-  if (!settings.mirror) return;
-  const url = URL.createObjectURL(blob);
+function showFrame(data) {
+  if (!settings.mirror || data.byteLength < 4) return;
+  const version = new DataView(data).getUint32(0);
+  // Never hold for long, in case the computer drops the shape.
+  if (holdMirrorBelow && Date.now() - holdSince > 3000) holdMirrorBelow = 0;
+  if (holdMirrorBelow && version < holdMirrorBelow) return;
+  holdMirrorBelow = 0;
+  const url = URL.createObjectURL(new Blob([data.slice(4)], { type: 'image/jpeg' }));
   screenImage.onload = () => { if (lastFrameUrl) URL.revokeObjectURL(lastFrameUrl); lastFrameUrl = url; };
   screenImage.src = url;
 }
@@ -454,6 +465,7 @@ function startStroke(event) {
     size: tool === 'eraser' ? ERASER_SIZE : SIZES[settings.size], angle: settings.nib, pts: [pointFrom(event)],
   };
   send({ t: 'begin', stroke: { id, tool, color: current.color, size: current.size, angle: current.angle, pts: current.pts } });
+  if (SHAPES.includes(tool)) { holdMirrorBelow = Infinity; holdSince = Date.now(); }
   if (tool === 'eraser') eraserAt = current.pts[0];
 }
 
@@ -487,6 +499,8 @@ function finishStroke(cancelled) {
     current.sentAt = Date.now();
     awaiting.set(you + current.id, current);
   }
+  if (cancelled && holdMirrorBelow === Infinity) holdMirrorBelow = 0;
+  if (holdMirrorBelow) holdSince = Date.now();
   current = null;
   predicted = [];
   eraserAt = null;

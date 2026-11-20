@@ -99,5 +99,10 @@ private:
     QTimer m_mirrorTimer;
     QElapsedTimer m_captureClock;
     QString m_mirrorError;
+    // Counts every change to the ink. Each mirror frame carries the count
+    // from when its capture started, so a tablet can tell a frame that
+    // predates a stroke from one that shows it.
+    quint32 m_inkVersion = 0;
+    quint32 m_captureVersion = 0;
     QByteArray m_icon;
 };
