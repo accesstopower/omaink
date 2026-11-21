@@ -84,7 +84,12 @@ QString keyPath() {
     QString state = qEnvironmentVariable("XDG_STATE_HOME");
     if (state.isEmpty())
         state = QDir::homePath() + "/.local/state";
-    return state + "/omaink/pad-key";
+    // The old HTTP key could already have been disclosed.
+    return state + "/omaink/pad-key-tls";
+}
+
+QString padTlsDirectory() {
+    return QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + "/omaink/pad-tls";
 }
 
 void print(const QString &text, FILE *stream = stdout) {
@@ -228,10 +233,16 @@ int main(int argc, char *argv[]) {
         if (command == "pad") {
             // The address works before OmaInk starts, so it can be set up on
             // the tablet ahead of time.
-            const QString key = PadServer::loadToken(keyPath(), options.arguments.value(0) == "reset");
-            QJsonArray urls;
-            for (const auto &address : PadServer::addresses())
-                urls.append(PadServer::url(address, options.port, key));
+            PadServer::Tls tls;
+            QString error;
+            if (!options.pad)
+                return report(options, {{"ok", false}, {"error", "The tablet pad is disabled."}});
+            if (!PadServer::loadTls(padTlsDirectory(), tls, error))
+                return report(options, {{"ok", false}, {"error", error}});
+            const QString key = PadServer::loadToken(keyPath(), options.arguments.value(0) == "reset", &error);
+            if (!error.isEmpty())
+                return report(options, {{"ok", false}, {"error", error}});
+            const QJsonArray urls{PadServer::url(tls.host, options.port, key)};
             return report(options, {{"ok", true}, {"running", false},
                                     {"pad", QJsonObject{{"urls", urls}, {"firewall", PadServer::firewallFix(options.port)}}}});
         }
@@ -265,14 +276,20 @@ int main(int argc, char *argv[]) {
 
     PadServer *pad = nullptr;
     if (options.pad) {
-        pad = new PadServer(&model, &app);
+        PadServer::Tls tls;
         QString error;
-        pad->setToken(PadServer::loadToken(keyPath(), false, &error));
-        if (!pad->listen(options.port))
-            error = pad->errorString();
+        if (PadServer::loadTls(padTlsDirectory(), tls, error)) {
+            const QString key = PadServer::loadToken(keyPath(), false, &error);
+            if (error.isEmpty()) {
+                pad = new PadServer(&model, &app);
+                pad->setToken(key);
+                if (!pad->listen(options.port, tls))
+                    error = pad->errorString();
+            }
+        }
         if (!error.isEmpty())
             print("omaink: " + error, stderr);
-        overlay.setPadServer(pad->isListening() ? pad : nullptr, error);
+        overlay.setPadServer(pad && pad->isListening() ? pad : nullptr, error);
     }
 
     // One copy runs at a time; later `omaink <command>` calls talk to it here.

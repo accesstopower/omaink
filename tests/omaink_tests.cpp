@@ -7,6 +7,7 @@
 #include <QJsonDocument>
 #include <QPainter>
 #include <QSignalSpy>
+#include <QSslSocket>
 #include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -72,7 +73,43 @@ int coverage(const QPainterPath &path, const QSize &size) {
 class OmaInkTests : public QObject {
     Q_OBJECT
 
+    QTemporaryDir m_tlsDir;
+    PadServer::Tls m_tls;
+
+    void trustTestCertificate(QSslSocket &socket)
+    {
+        auto config = socket.sslConfiguration();
+        config.setCaCertificates(m_tls.configuration.localCertificateChain());
+        socket.setSslConfiguration(config);
+    }
+
+    void connectTls(QSslSocket &socket, const PadServer &server)
+    {
+        trustTestCertificate(socket);
+        socket.setPeerVerifyMode(QSslSocket::VerifyPeer);
+        socket.connectToHostEncrypted(m_tls.host, server.port());
+    }
+
 private slots:
+    void initTestCase()
+    {
+        QVERIFY(m_tlsDir.isValid());
+        QFile host(m_tlsDir.filePath("host"));
+        QVERIFY(host.open(QIODevice::WriteOnly));
+        QCOMPARE(host.write("127.0.0.1\n"), 10);
+        host.close();
+        QProcess openssl;
+        openssl.setWorkingDirectory(m_tlsDir.path());
+        openssl.start("openssl", {"req", "-x509", "-newkey", "rsa:2048", "-nodes",
+                                   "-keyout", "key.pem", "-out", "cert.pem", "-days", "1",
+                                   "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1"});
+        QVERIFY(openssl.waitForFinished(10000));
+        QVERIFY2(openssl.exitStatus() == QProcess::NormalExit && openssl.exitCode() == 0,
+                 openssl.readAllStandardError().constData());
+        QString error;
+        QVERIFY2(PadServer::loadTls(m_tlsDir.path(), m_tls, error), qPrintable(error));
+    }
+
     void acceptKeyMatchesTheRfc()
     {
         QCOMPARE(WebSocket::acceptKey("dGhlIHNhbXBsZSBub25jZQ=="), QByteArray("s3pPLMBiTxaQ9kYGzzhZRbK+xOo="));
@@ -291,27 +328,75 @@ private slots:
         QVERIFY(PadServer::firewallFix(7777, conf, rules, "").isEmpty());
     }
 
+    void padRequiresTlsAndTrustedIdentity()
+    {
+        InkModel model;
+        PadServer server(&model);
+        QTemporaryDir missing;
+        QVERIFY(missing.isValid());
+        PadServer::Tls invalid;
+        QString error;
+        QVERIFY(!PadServer::loadTls(missing.path(), invalid, error));
+        QVERIFY(!server.listen(0, invalid));
+        QVERIFY(!server.isListening());
+        QVERIFY(server.pairingUrl().isEmpty());
+
+        server.setToken("testkey123456789");
+        QVERIFY2(server.listen(0, m_tls), qPrintable(server.errorString()));
+        const QUrl url(server.pairingUrl());
+        QCOMPARE(url.scheme(), QString("https"));
+        QCOMPARE(url.host(), m_tls.host);
+        QCOMPARE(url.port(), int(server.port()));
+        QVERIFY(!url.hasQuery());
+        QCOMPARE(url.fragment(), QString("k=testkey123456789"));
+
+        QTcpSocket plain;
+        plain.connectToHost(QHostAddress::LocalHost, server.port());
+        QVERIFY(plain.waitForConnected(2000));
+        QSignalSpy read(&plain, &QTcpSocket::readyRead);
+        plain.write("GET /pad HTTP/1.1\r\nHost: pad\r\n\r\n");
+        QTRY_COMPARE_WITH_TIMEOUT(plain.state(), QAbstractSocket::UnconnectedState, 2000);
+        QVERIFY(read.isEmpty());
+
+        for (bool trustCertificate : {false, true}) {
+            QSslSocket socket;
+            socket.setPeerVerifyMode(QSslSocket::VerifyPeer);
+            if (trustCertificate)
+                trustTestCertificate(socket);
+            QSignalSpy encrypted(&socket, &QSslSocket::encrypted);
+            QSignalSpy errors(&socket, &QSslSocket::peerVerifyError);
+            // The trusted certificate covers 127.0.0.1 only.
+            socket.connectToHostEncrypted(m_tls.host, server.port(),
+                                          trustCertificate ? QString("other.invalid") : m_tls.host);
+            QTRY_VERIFY_WITH_TIMEOUT(!errors.isEmpty() &&
+                                     socket.state() == QAbstractSocket::UnconnectedState, 2000);
+            QVERIFY(encrypted.isEmpty());
+        }
+    }
+
     void serverServesThePadAndGuardsTheSocket()
     {
         InkModel model;
         PadServer server(&model);
         server.setToken("testkey123456789");
         server.setCaptureCommand({});
-        QVERIFY(server.listen(0));
+        QVERIFY2(server.listen(0, m_tls), qPrintable(server.errorString()));
 
         auto request = [&](const QByteArray &head) {
-            QTcpSocket socket;
-            socket.connectToHost(QHostAddress::LocalHost, server.port());
-            if (!socket.waitForConnected(2000))
+            QSslSocket socket;
+            connectTls(socket, server);
+            QElapsedTimer clock;
+            clock.start();
+            while (clock.elapsed() < 2000 && !socket.isEncrypted())
+                QTest::qWait(10);
+            if (!socket.isEncrypted())
                 return QByteArray();
             socket.write(head);
             QByteArray reply;
-            QElapsedTimer clock;
-            clock.start();
-            while (clock.elapsed() < 2000 && socket.state() == QAbstractSocket::ConnectedState) {
-                QCoreApplication::processEvents();
-                if (socket.waitForReadyRead(20))
-                    reply += socket.readAll();
+            clock.restart();
+            while (clock.elapsed() < 2000 && socket.state() != QAbstractSocket::UnconnectedState) {
+                QTest::qWait(10);
+                reply += socket.readAll();
             }
             return reply + socket.readAll();
         };
@@ -332,11 +417,11 @@ private slots:
         PadServer server(&model);
         server.setToken("testkey123456789");
         server.setCaptureCommand({});
-        QVERIFY(server.listen(0));
+        QVERIFY2(server.listen(0, m_tls), qPrintable(server.errorString()));
 
-        QTcpSocket socket;
-        socket.connectToHost(QHostAddress::LocalHost, server.port());
-        QVERIFY(socket.waitForConnected(2000));
+        QSslSocket socket;
+        connectTls(socket, server);
+        QTRY_VERIFY_WITH_TIMEOUT(socket.isEncrypted(), 2000);
         socket.write("GET /ws?k=testkey123456789 HTTP/1.1\r\nHost: pad\r\nUpgrade: websocket\r\n"
                      "Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n");
         QByteArray received;
@@ -387,10 +472,10 @@ private slots:
         PadServer server(&model);
         server.setToken("testkey123456789");
         server.setCaptureCommand(fake);
-        QVERIFY(server.listen(0));
-        QTcpSocket socket;
-        socket.connectToHost(QHostAddress::LocalHost, server.port());
-        QVERIFY(socket.waitForConnected(2000));
+        QVERIFY2(server.listen(0, m_tls), qPrintable(server.errorString()));
+        QSslSocket socket;
+        connectTls(socket, server);
+        QTRY_VERIFY_WITH_TIMEOUT(socket.isEncrypted(), 2000);
         socket.write("GET /ws?k=testkey123456789 HTTP/1.1\r\nUpgrade: websocket\r\n"
                      "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n");
         socket.write(clientFrame(WebSocket::Text, R"({"t":"mirror","on":true})"));

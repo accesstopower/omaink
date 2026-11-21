@@ -254,7 +254,7 @@ const settings = {
   mirror: load('mirror', true),
 };
 
-const key = new URLSearchParams(location.search).get('k') || '';
+const key = new URLSearchParams(location.hash.slice(1)).get('k') || '';
 let socket = null;
 let you = '';
 let aspect = 16 / 9;
@@ -365,11 +365,15 @@ function layout() {
 // --- connection ------------------------------------------------------------
 
 function connect() {
+  if (location.protocol !== 'https:') {
+    notice('Open the HTTPS address shown by OmaInk to connect.', true);
+    return;
+  }
   if (!key) {
     notice('This address is missing its key. Run "omaink pad" on the computer and open the address it shows.', true);
     return;
   }
-  socket = new WebSocket(`ws://${location.host}/ws?k=${encodeURIComponent(key)}`);
+  socket = new WebSocket(`wss://${location.host}/ws?k=${encodeURIComponent(key)}`);
   socket.binaryType = 'arraybuffer';
   socket.onopen = () => {
     retryDelay = 500;

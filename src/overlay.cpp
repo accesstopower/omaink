@@ -178,12 +178,8 @@ void Overlay::setPadServer(PadServer *server, const QString &error) {
 }
 
 QStringList Overlay::padUrls() const {
-    QStringList urls;
-    if (!m_pad || !m_pad->isListening())
-        return urls;
-    for (const auto &address : PadServer::addresses())
-        urls.append(PadServer::url(address, m_pad->port(), m_pad->token()));
-    return urls;
+    const QString url = m_pad ? m_pad->pairingUrl() : QString();
+    return url.isEmpty() ? QStringList{} : QStringList{url};
 }
 
 int Overlay::padClients() const { return m_pad ? m_pad->clientCount() : 0; }
