@@ -17,7 +17,9 @@
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QSvgRenderer>
-#include <QTcpSocket>
+#include <QSslCertificate>
+#include <QSslKey>
+#include <QSslSocket>
 #include <QtEndian>
 #include <QUrlQuery>
 #include <algorithm>
@@ -61,7 +63,7 @@ bool isPrivate(const QHostAddress &address) {
 
 PadServer::PadServer(InkModel *model, QObject *parent)
     : QObject(parent), m_model(model), m_grimPath(QStandardPaths::findExecutable("grim")) {
-    connect(&m_server, &QTcpServer::newConnection, this, &PadServer::onConnection);
+    connect(&m_server, &QTcpServer::pendingConnectionAvailable, this, &PadServer::onConnection);
 
     connect(m_model, &InkModel::changed, this, [this] { ++m_inkVersion; });
     connect(m_model, &InkModel::committed, this, [this](const StrokePtr &stroke) {
@@ -103,9 +105,52 @@ PadServer::~PadServer() {
     m_clients.clear();
 }
 
-bool PadServer::listen(quint16 port) {
-    if (m_server.listen(QHostAddress::Any, port))
+bool PadServer::loadTls(const QString &directory, Tls &tls, QString &error) {
+    tls = {};
+    auto read = [&directory](const QString &name) {
+        QFile file(QDir(directory).filePath(name));
+        return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+    };
+    QUrl origin;
+    origin.setScheme("https");
+    origin.setHost(QString::fromUtf8(read("host")).trimmed(), QUrl::StrictMode);
+    const auto chain = QSslCertificate::fromData(read("cert.pem"));
+    const auto pem = read("key.pem");
+    QSslKey key(pem, QSsl::Rsa);
+    if (key.isNull())
+        key = QSslKey(pem, QSsl::Ec);
+
+    if (!QSslSocket::supportsSsl()) {
+        error = tr("TLS is unavailable. The tablet pad is disabled.");
+        return false;
+    }
+    const auto now = QDateTime::currentDateTimeUtc();
+    if (!origin.isValid() || origin.host().isEmpty() || chain.isEmpty() || key.isNull() ||
+        chain.first().effectiveDate() > now || chain.first().expiryDate() <= now) {
+        error = tr("The tablet pad needs a host, a current TLS certificate chain and a private key in %1. See README.md.")
+                    .arg(directory);
+        return false;
+    }
+    tls.host = origin.host();
+    tls.configuration = QSslConfiguration::defaultConfiguration();
+    tls.configuration.setProtocol(QSsl::TlsV1_2OrLater);
+    tls.configuration.setPeerVerifyMode(QSslSocket::VerifyNone); // The pad key authenticates tablets.
+    tls.configuration.setLocalCertificateChain(chain);
+    tls.configuration.setPrivateKey(key);
+    return true;
+}
+
+bool PadServer::listen(quint16 port, const Tls &tls) {
+    if (!QSslSocket::supportsSsl() || tls.host.isEmpty() ||
+        tls.configuration.localCertificate().isNull() || tls.configuration.privateKey().isNull()) {
+        m_error = tr("The tablet pad needs a TLS certificate and private key.");
+        return false;
+    }
+    m_server.setSslConfiguration(tls.configuration);
+    if (m_server.listen(QHostAddress::Any, port)) {
+        m_host = tls.host;
         return true;
+    }
     m_error = m_server.serverError() == QAbstractSocket::AddressInUseError
                   ? tr("Port %1 is already in use. Start with --port to pick another.").arg(port)
                   : m_server.errorString();
@@ -137,23 +182,6 @@ QString PadServer::loadToken(const QString &path, bool reset, QString *error) {
         *error = out.errorString();
     }
     return token;
-}
-
-QStringList PadServer::addresses() {
-    QStringList preferred, others;
-    for (const auto &interface : QNetworkInterface::allInterfaces()) {
-        const auto flags = interface.flags();
-        if (!(flags & QNetworkInterface::IsUp) || !(flags & QNetworkInterface::IsRunning) ||
-            (flags & QNetworkInterface::IsLoopBack))
-            continue;
-        for (const auto &entry : interface.addressEntries()) {
-            const QHostAddress address = entry.ip();
-            if (address.protocol() != QAbstractSocket::IPv4Protocol)
-                continue;
-            (isPrivate(address) ? preferred : others).append(address.toString());
-        }
-    }
-    return preferred + others;
 }
 
 QString PadServer::localSubnet() {
@@ -199,7 +227,13 @@ QString PadServer::firewallFix(quint16 port, const QString &confPath, const QStr
 }
 
 QString PadServer::url(const QString &address, quint16 port, const QString &token) {
-    return QString("http://%1:%2/pad?k=%3").arg(address).arg(port).arg(token);
+    QUrl url;
+    url.setScheme("https");
+    url.setHost(address);
+    url.setPort(port);
+    url.setPath("/pad");
+    url.setFragment("k=" + token);
+    return url.toString(QUrl::FullyEncoded);
 }
 
 int PadServer::clientCount() const {
@@ -287,7 +321,7 @@ void PadServer::handleRequest(Client &client, const QByteArray &head) {
         respond(client.socket, 405, "text/plain", "GET only\n");
         return;
     }
-    const QUrl target(QString::fromUtf8("http://pad" + request[1]));
+    const QUrl target(QString::fromUtf8("https://pad" + request[1]));
     const QString path = target.path();
     const QString key = QUrlQuery(target).queryItemValue("k");
 

@@ -6,7 +6,8 @@
 #include <QHash>
 #include <QObject>
 #include <QProcess>
-#include <QTcpServer>
+#include <QSslConfiguration>
+#include <QSslServer>
 #include <QTimer>
 
 class QTcpSocket;
@@ -14,8 +15,7 @@ class QTcpSocket;
 // Serves the drawing pad to a tablet's browser and carries its strokes into
 // the ink model, and the computer's screen back to the tablet so you can see
 // what you're drawing on. Everything after the page itself needs the pairing
-// key from the pad's address, so nobody else on the network can watch the
-// screen or draw on it.
+// key from the pad's address and runs over TLS.
 class PadServer : public QObject {
     Q_OBJECT
 
@@ -23,18 +23,21 @@ public:
     explicit PadServer(InkModel *model, QObject *parent = nullptr);
     ~PadServer() override;
 
-    bool listen(quint16 port);
+    struct Tls {
+        QString host;
+        QSslConfiguration configuration;
+    };
+    static bool loadTls(const QString &directory, Tls &tls, QString &error);
+    bool listen(quint16 port, const Tls &tls);
+    QString pairingUrl() const { return isListening() ? url(m_host, port(), m_token) : QString(); }
     QString errorString() const { return m_error; }
     bool isListening() const { return m_server.isListening(); }
     quint16 port() const { return m_server.serverPort(); }
 
-    QString token() const { return m_token; }
     void setToken(const QString &token) { m_token = token; }
     // Reads the pairing key, making a new one the first time or on reset, so
     // a pad saved to a tablet's home screen keeps working across restarts.
     static QString loadToken(const QString &path, bool reset = false, QString *error = nullptr);
-    // This machine's IPv4 addresses, home and office networks first.
-    static QStringList addresses();
     static QString url(const QString &address, quint16 port, const QString &token);
     // The home or office network this machine is on, like 192.168.1.0/24.
     static QString localSubnet();
@@ -83,9 +86,10 @@ private:
     bool anyMirror() const;
 
     InkModel *m_model;
-    QTcpServer m_server;
+    QSslServer m_server;
     QHash<QTcpSocket *, Client *> m_clients;
     QString m_error;
+    QString m_host;
     QString m_token;
     int m_nextId = 1;
 
